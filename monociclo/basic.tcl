@@ -67,7 +67,7 @@ check_design -unresolved
 ## Constraints Setup
 ####################################################################
 
-read_sdc /home/FabioRamos/processador.sdc
+read_sdc /home/EmanuelRicardo/Desktop/Projeto_PDII/monociclo/monociclo.sdc
 puts "The number of exceptions is [llength [vfind "design:$DESIGN" -exception *]]"
 
 
