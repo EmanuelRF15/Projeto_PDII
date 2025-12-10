@@ -1,6 +1,6 @@
 # Criando um clock virtual chamado "virtclk"
 
-create_clock -name {clock} -period 2.000 -waveform { 0.000 1.000 } clock
+create_clock -name {clock} -period 10.000 -waveform { 0.000 5.000 } clock
 
 # Configurando delay de entrada e de saida
 
