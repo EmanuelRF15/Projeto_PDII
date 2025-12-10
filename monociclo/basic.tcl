@@ -12,7 +12,7 @@ puts "Hostname : [info hostname]"
 ##############################################################################
 
 
-set DESIGN processador
+set DESIGN monociclo
 set GEN_EFF medium
 set MAP_OPT_EFF high
 set DATE [clock format [clock seconds] -format "%b%d-%T"] 
@@ -53,7 +53,7 @@ set_db / .lp_insert_clock_gating true
 ####################################################################
 
 
-read_hdl -language vhdl /home/FabioRamos/processador.vhd
+read_hdl -language vhdl /home/EmanuelRicardo/Desktop/Projeto_PDII/monociclo/monociclo.vhd
 #read_hdl /home/FabioRamos/microprocessador.v
 elaborate $DESIGN
 puts "Runtime & Memory after 'read_hdl'"
