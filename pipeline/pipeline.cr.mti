@@ -1,0 +1,27 @@
+/home/emanuel/ssd/questa/Projeto/pipeline/pipeline.vhd {1 {vcom -work work -2008 -explicit /home/emanuel/ssd/questa/Projeto/pipeline/pipeline.vhd
+Model Technology ModelSim - Intel FPGA Edition vcom 2020.1 Compiler 2020.02 Feb 28 2020
+Start time: 14:42:59 on Dec 10,2025
+vcom -reportprogress 300 -work work -2008 -explicit /home/emanuel/ssd/questa/Projeto/pipeline/pipeline.vhd 
+-- Loading package STANDARD
+-- Loading package TEXTIO
+-- Loading package std_logic_1164
+-- Loading package std_logic_arith
+-- Loading package STD_LOGIC_UNSIGNED
+-- Compiling entity pipeline
+-- Compiling architecture behavior of pipeline
+End time: 14:43:00 on Dec 10,2025, Elapsed time: 0:00:01
+
+} {} {}} /home/emanuel/ssd/questa/Projeto/pipeline/tb_pipeline.vhd {1 {vcom -work work -2008 -explicit /home/emanuel/ssd/questa/Projeto/pipeline/tb_pipeline.vhd
+Model Technology ModelSim - Intel FPGA Edition vcom 2020.1 Compiler 2020.02 Feb 28 2020
+Start time: 14:43:00 on Dec 10,2025
+vcom -reportprogress 300 -work work -2008 -explicit /home/emanuel/ssd/questa/Projeto/pipeline/tb_pipeline.vhd 
+-- Loading package STANDARD
+-- Loading package TEXTIO
+-- Loading package std_logic_1164
+-- Loading package std_logic_arith
+-- Loading package STD_LOGIC_UNSIGNED
+-- Compiling entity tb_pipeline
+-- Compiling architecture behaviour of tb_pipeline
+End time: 14:43:00 on Dec 10,2025, Elapsed time: 0:00:00
+
+} {} {}}
