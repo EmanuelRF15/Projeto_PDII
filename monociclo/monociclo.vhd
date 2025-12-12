@@ -14,21 +14,19 @@ end monociclo;
 
 architecture behavior of monociclo is
 
-   
+    -- Definição dos atributos de síntese para o Genus (Cadence)
+    attribute syn_ramstyle : string;
+    attribute syn_romstyle : string;
+
     -- PC
-   
     signal pc_reg : std_logic_vector(7 downto 0);  
 
-   
-    -- TIPOS DE MEMÓRIA
-   
-    type data_mem_array  is array (0 to 255) of std_logic_vector(15 downto 0);
-    type instr_mem_array is array (0 to 255) of std_logic_vector(15 downto 0);
-    type reg_file_array  is array (0 to 15)  of std_logic_vector(15 downto 0);
+    -- TIPOS DE MEMÓRIA (Reduzidos para 32 posições para facilitar a síntese)
+    type data_mem_array  is array (0 to 31) of std_logic_vector(15 downto 0);
+    type instr_mem_array is array (0 to 31) of std_logic_vector(15 downto 0);
+    type reg_file_array  is array (0 to 15) of std_logic_vector(15 downto 0);
 
-   
     -- MEMÓRIA DE INSTRUÇÕES
-   
     signal instr_mem : instr_mem_array := (
         0  => "1010000100000010", -- LDI  R1, 2
         1  => "1010001000000101", -- LDI  R2, 5
@@ -49,149 +47,130 @@ architecture behavior of monociclo is
         others => (others => '1')
     );
 
-   
+    -- Aplica o atributo para forçar implementação como Lógica/Registradores
+    attribute syn_romstyle of instr_mem : signal is "logic";
+
     -- MEMÓRIA DE DADOS (RAM)
-   
-    signal data_mem : data_mem_array := (
-        others => (others => '0')
-    );
+    signal data_mem : data_mem_array := (others => (others => '0'));
+    
+    -- Aplica atributo para forçar Flip-Flops (evita Black Box)
+    attribute syn_ramstyle of data_mem : signal is "registers";
 
-   
     -- BANCO DE REGISTRADORES
-   
     signal reg_file : reg_file_array := (others => (others => '0'));
+    
+    -- Aplica atributo para forçar Flip-Flops
+    attribute syn_ramstyle of reg_file : signal is "registers";
 
-   
-    -- CAMPOS DECODIFICADOS DA INSTRUÇÃO
-    -- Formato: [15..12]=opcode, [11..8]=rd/offset, [7..4]=rs, [3..0]=rt/imm4
-   
-    signal opcode        : std_logic_vector(3 downto 0);
-    signal reg_dest      : std_logic_vector(3 downto 0);  -- rd ou offset de branch
-    signal reg_rs        : std_logic_vector(3 downto 0);  -- fonte A (rs)
-    signal reg_rt_or_imm4: std_logic_vector(3 downto 0);  -- fonte B (rt) OU imm4
-    signal imm8          : std_logic_vector(7 downto 0);  -- imediato de 8 bits
-    signal branch_offset : std_logic_vector(3 downto 0);  -- offset de branch (4 bits)
+    -- SINAIS DE DECODIFICAÇÃO E CONTROLE
+    signal opcode         : std_logic_vector(3 downto 0);
+    signal reg_dest       : std_logic_vector(3 downto 0);
+    signal reg_rs         : std_logic_vector(3 downto 0);
+    signal reg_rt_or_imm4 : std_logic_vector(3 downto 0);
+    signal imm8           : std_logic_vector(7 downto 0);
+    signal branch_offset  : std_logic_vector(3 downto 0);
 
-   
-    -- SINAIS DE CONTROLE E DADOS INTERNOS
-   
     signal branch_taken   : std_logic;
     signal mul_rs_rt      : std_logic_vector(31 downto 0);
     signal mul_rs_imm4    : std_logic_vector(31 downto 0);
     signal rs_eq_rt       : std_logic;
     
-    -- Valores lidos do banco de registradores
     signal rs_value       : std_logic_vector(15 downto 0);
     signal rt_value       : std_logic_vector(15 downto 0);
 
+    -- Sinal auxiliar para limitar o índice de leitura (evita erro de simulação/síntese com mem reduzida)
+    signal pc_idx : integer;
+
 begin
 
-   
-    -- DECODIFICAÇÃO DA INSTRUÇÃO NA POSIÇÃO PC
-   
-    opcode         <= instr_mem(conv_integer(pc_reg))(15 downto 12);
-    reg_dest       <= instr_mem(conv_integer(pc_reg))(11 downto 8);
-    reg_rs         <= instr_mem(conv_integer(pc_reg))(7  downto 4);
-    reg_rt_or_imm4 <= instr_mem(conv_integer(pc_reg))(3  downto 0);
-    imm8           <= instr_mem(conv_integer(pc_reg))(7  downto 0);
+    -- Limita o índice do PC para não estourar o array de 32 posições (0 a 31)
+    -- Isso garante que a síntese não crie lógica desnecessária para endereços > 31
+    pc_idx <= conv_integer(pc_reg(4 downto 0)); 
 
-    branch_offset  <= reg_dest;  -- mesmo campo usado como offset no branch
+    -- DECODIFICAÇÃO
+    opcode         <= instr_mem(pc_idx)(15 downto 12);
+    reg_dest       <= instr_mem(pc_idx)(11 downto 8);
+    reg_rs         <= instr_mem(pc_idx)(7  downto 4);
+    reg_rt_or_imm4 <= instr_mem(pc_idx)(3  downto 0);
+    imm8           <= instr_mem(pc_idx)(7  downto 0);
 
-   
-    -- LEITURA DO BANCO DE REGISTRADORES (rs e rt)
-   
+    branch_offset  <= reg_dest; 
+
+    -- LEITURA DO BANCO DE REGISTRADORES
     rs_value <= reg_file(conv_integer(reg_rs));
     rt_value <= reg_file(conv_integer(reg_rt_or_imm4));
 
-    -- Só para visualização no testbench (não são R0/R1 fixos)
+    -- SAÍDAS
     R0_out <= rs_value;
     R1_out <= rt_value;
 
-   
-    -- "ALU" E SINAIS AUXILIARES
-   
+    -- ALU
     rs_eq_rt    <= '1' when (rs_value = rt_value) else '0';
-
-    -- Multiplicação registrador x registrador
     mul_rs_rt   <= rs_value * rt_value;
-
-    -- Multiplicação registrador x imediato de 4 bits (zero-extend)
     mul_rs_imm4 <= rs_value * ("000000000000" & reg_rt_or_imm4);
 
-    -- Lógica do branch: JMP, BEQ, BNE
-    branch_taken <= '1' when (opcode = "0100") or                      -- JMP
-                            (opcode = "0101" and rs_eq_rt = '1') or    -- BEQ
-                            (opcode = "0110" and rs_eq_rt = '0')       -- BNE
+    branch_taken <= '1' when (opcode = "0100") or                      
+                            (opcode = "0101" and rs_eq_rt = '1') or    
+                            (opcode = "0110" and rs_eq_rt = '0')       
                     else '0';
 
-   
-    -- PROCESSO SÍNCRONO: EXECUÇÃO DA INSTRUÇÃO + ATUALIZAÇÃO DO PC
-   
+    -- PROCESSO SÍNCRONO
     process(reset, clock)
     begin
         if reset = '1' then
-            reg_file <= (others => (others => '0'));
-            pc_reg   <= (others => '0');
+            -- Reset síncrono ou assíncrono (dependendo da biblioteca, aqui resetando regs chave)
+            pc_reg <= (others => '0');
+            -- Resetar o banco de registradores inteiro consome muita área, 
+            -- mas garante estado inicial conhecido.
+            for i in 0 to 15 loop
+                reg_file(i) <= (others => '0');
+            end loop;
 
         elsif rising_edge(clock) then
             
-           
-            -- ETAPA 1: EXECUTAR A INSTRUÇÃO (ESCRITA EM REG/ MEM)
-           
+            -- ETAPA 1: EXECUTAR A INSTRUÇÃO
             case opcode is
-                when "0000" =>  -- LW: rd <- MEM[imm8]
+                when "0000" =>  -- LW
+                    -- Nota: Usando 'conv_integer' limitado a 5 bits para data_mem tbm
                     reg_file(conv_integer(reg_dest)) <= 
-                        data_mem(conv_integer(imm8));
+                        data_mem(conv_integer(imm8(4 downto 0)));
 
-                when "1010" =>  -- LDI: rd <- imm8 (zero-extend)
-                    reg_file(conv_integer(reg_dest)) <= 
-                        ("00000000" & imm8); 
+                when "1010" =>  -- LDI
+                    reg_file(conv_integer(reg_dest)) <= ("00000000" & imm8); 
 
-                when "0111" =>  -- SW: MEM[imm8] <- rd
-                    data_mem(conv_integer(imm8)) <= 
+                when "0111" =>  -- SW
+                    data_mem(conv_integer(imm8(4 downto 0))) <= 
                         reg_file(conv_integer(reg_dest));
 
-                when "0001" =>  -- ADD: rd <- rs + rt
-                    reg_file(conv_integer(reg_dest)) <= 
-                        rs_value + rt_value;
+                when "0001" =>  -- ADD
+                    reg_file(conv_integer(reg_dest)) <= rs_value + rt_value;
 
-                when "0010" =>  -- SUB: rd <- rs - rt
-                    reg_file(conv_integer(reg_dest)) <= 
-                        rs_value - rt_value;
+                when "0010" =>  -- SUB
+                    reg_file(conv_integer(reg_dest)) <= rs_value - rt_value;
 
-                when "0011" =>  -- MUL: rd <- (rs * rt) (16 LSBs)
-                    reg_file(conv_integer(reg_dest)) <= 
-                        mul_rs_rt(15 downto 0);        
+                when "0011" =>  -- MUL
+                    reg_file(conv_integer(reg_dest)) <= mul_rs_rt(15 downto 0);        
 
-                when "1000" =>  -- MUI: rd <- rs * imm4
-                    reg_file(conv_integer(reg_dest)) <= 
-                        mul_rs_imm4(15 downto 0);        
+                when "1000" =>  -- MUI
+                    reg_file(conv_integer(reg_dest)) <= mul_rs_imm4(15 downto 0);        
 
-                when "1001" =>  -- ADDI: rd <- rs + imm4
-                    reg_file(conv_integer(reg_dest)) <= 
-                        rs_value + ("000000000000" & reg_rt_or_imm4);
+                when "1001" =>  -- ADDI
+                    reg_file(conv_integer(reg_dest)) <= rs_value + ("000000000000" & reg_rt_or_imm4);
 
-                when "1011" =>  -- SUI: rd <- rs - imm4
-                    reg_file(conv_integer(reg_dest)) <= 
-                        rs_value - ("000000000000" & reg_rt_or_imm4);
+                when "1011" =>  -- SUI
+                    reg_file(conv_integer(reg_dest)) <= rs_value - ("000000000000" & reg_rt_or_imm4);
 
                 when others =>
                     null;
             end case;
 
-           
-            -- ETAPA 2: ATUALIZAR PC (PC+1 OU SALTO)
-           
+            -- ETAPA 2: ATUALIZAR PC
             if branch_taken = '0' then
-                -- Caminho normal: próxima instrução
                 pc_reg <= pc_reg + 1;
             else
-                -- Caminho de desvio
                 if (opcode = "0101") or (opcode = "0110") then
-                    -- BEQ/BNE: salto relativo (PC = PC + offset)
                     pc_reg <= pc_reg + ("0000" & branch_offset);        
                 elsif (opcode = "0100") then
-                    -- JMP: salto absoluto (PC = imm8)
                     pc_reg <= imm8;
                 end if;
             end if;
