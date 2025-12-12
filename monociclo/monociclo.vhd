@@ -8,7 +8,8 @@ entity monociclo is
         clock   : in  std_logic;
         reset   : in  std_logic;
         R0_out  : out std_logic_vector(15 downto 0);
-        R1_out  : out std_logic_vector(15 downto 0)
+        R1_out  : out std_logic_vector(15 downto 0);
+        PC_out : out std_logic_vector(7 downto 0)
     );
 end monociclo;
 

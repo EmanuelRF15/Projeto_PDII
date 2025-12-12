@@ -15,20 +15,27 @@ end pipeline;
 
 architecture behavior of pipeline is
 
-    -- =========================================================================
+
     -- TIPOS E MEMÓRIAS
-    -- =========================================================================
+
     type data_mem_array  is array (0 to 255) of std_logic_vector(15 downto 0);
     type instr_mem_array is array (0 to 255) of std_logic_vector(15 downto 0);
     type reg_file_array  is array (0 to 15)  of std_logic_vector(15 downto 0);
 
+    --  FORMATO LÓGICO QUE O HARDWARE ESTÁ USANDO:
+    --  [15..12] opcode
+    --  [11..8]  rd_addr   (destino p/ ALU / carga)
+    --  [7..4]   rs_addr   (fonte A)
+    --  [3..0]   rt_addr   (fonte B)
+    --  [7..0]   imm8      (endereços/imediatos – compartilha os 4 bits de rt)
+
     signal instr_mem : instr_mem_array := (
         0  => "1010000100000010", -- LDI  R1, 2
         1  => "1010001000000101", -- LDI  R2, 5
-        2  => "0001001100010010", -- ADD  R3 = R1+R2 (Forwarding de R1 e R2!)
-        3  => "1001010000110011", -- ADDI R4 = R3+3 (Forwarding de R3!)
-        4  => "0111010000010000", -- SW   [16] = R4
-        5  => "0000010100010000", -- LW   R5 <- [16]
+        2  => "0001001100010010", -- ADD  R3 = R1+R2 (Forwarding de R1 e R2)
+        3  => "1001010000110011", -- ADDI R4 = R3+3 (Forwarding de R3)
+        4  => "0111000000010100", -- SW   [20] = R4
+        5  => "0000010100010100", -- LW   R5 <- [20]
         6  => "0101001001000101", -- BEQ  R4,R5,+2 (Forwarding de R4 e R5)
         7  => "1010011000000000", -- LDI  R6, 0 (Pulo do BEQ cai aqui se não tomado)
         8  => "1000011000010100", -- MUI  R6 = R1*4
@@ -40,9 +47,9 @@ architecture behavior of pipeline is
     signal data_mem : data_mem_array := (others => (others => '0'));
     signal reg_file : reg_file_array := (others => (others => '0'));
 
-    -- =========================================================================
+
     -- REGISTRADORES DE PIPELINE (Records)
-    -- =========================================================================
+
     
     signal pc_reg : std_logic_vector(7 downto 0);
 
@@ -71,7 +78,7 @@ architecture behavior of pipeline is
     -- 3. EX/MEM
     type EX_MEM_Type is record
         alu_result : std_logic_vector(15 downto 0);
-        write_data : std_logic_vector(15 downto 0); -- Dado para SW
+        write_data : std_logic_vector(15 downto 0); -- Dado para SW (vem de RT/forwarding)
         rd_addr    : std_logic_vector(3 downto 0);
         opcode     : std_logic_vector(3 downto 0);
         reg_write  : std_logic;
@@ -105,7 +112,7 @@ begin
         variable v_mul_res: std_logic_vector(31 downto 0);
         
         -- Variáveis temporárias para decodificação
-        variable v_opcode : std_logic_vector(3 downto 0);
+        variable v_opcode       : std_logic_vector(3 downto 0);
         variable v_reg_write_id : std_logic;
     begin
         if reset = '1' then
@@ -114,28 +121,32 @@ begin
             
             -- Reset Pipeline Registers
             IF_ID  <= ((others=>'0'), (others=>'0'));
-            ID_EX  <= ((others=>'0'), (others=>'0'), (others=>'0'), (others=>'0'), (others=>'0'), (others=>'0'), (others=>'0'), (others=>'0'), (others=>'0'), '0');
-            EX_MEM <= ((others=>'0'), (others=>'0'), (others=>'0'), (others=>'0'), '0', (others=>'0'));
+            ID_EX  <= ((others=>'0'), (others=>'0'), (others=>'0'),
+                       (others=>'0'), (others=>'0'), (others=>'0'),
+                       (others=>'0'), (others=>'0'), (others=>'0'), '0');
+            EX_MEM <= ((others=>'0'), (others=>'0'), (others=>'0'),
+                       (others=>'0'), '0', (others=>'0'));
             MEM_WB <= ((others=>'0'), (others=>'0'), '0');
 
         elsif rising_edge(clock) then
             
-            -- =============================================================
+
             -- ESTÁGIO 5: WB (WRITE BACK)
-            -- =============================================================
+
             if MEM_WB.reg_write = '1' then
                 reg_file(conv_integer(MEM_WB.rd_addr)) <= MEM_WB.final_data;
             end if;
 
-            -- =============================================================
+
             -- ESTÁGIO 4: MEM (MEMORY ACCESS)
-            -- =============================================================
+
             MEM_WB.rd_addr   <= EX_MEM.rd_addr;
             MEM_WB.reg_write <= EX_MEM.reg_write;
 
             if EX_MEM.opcode = "0000" then -- LW
                 MEM_WB.final_data <= data_mem(conv_integer(EX_MEM.imm8));
             elsif EX_MEM.opcode = "0111" then -- SW
+                -- Aqui o dado vem de EX_MEM.write_data (que é alu_in_b = RT com forwarding)
                 data_mem(conv_integer(EX_MEM.imm8)) <= EX_MEM.write_data;
                 MEM_WB.final_data <= (others => '0'); -- SW não escreve em Reg
             else
@@ -143,9 +154,7 @@ begin
                 MEM_WB.final_data <= EX_MEM.alu_result;
             end if;
 
-            -- =============================================================
             -- ESTÁGIO 3: EX (EXECUTE) + FORWARDING UNIT
-            -- =============================================================
             
             -- 1. FORWARDING LOGIC (A Mágica acontece aqui)
             
@@ -176,7 +185,7 @@ begin
             EX_MEM.reg_write <= ID_EX.reg_write;
             EX_MEM.imm8      <= ID_EX.imm8;
             
-            -- Valor a ser escrito na memória (SW) precisa vir do Forwarding B (caso SW use R4 logo após R4 ser calculado)
+            -- Valor a ser escrito na memória (SW) vem de alu_in_b (RT com forwarding)
             EX_MEM.write_data <= alu_in_b; 
 
             v_mul_res := (others => '0');
@@ -209,14 +218,15 @@ begin
                 end if;
             end if;
 
-            -- =============================================================
+
             -- ESTÁGIO 2: ID (DECODE)
-            -- =============================================================
+
             v_opcode := IF_ID.instr(15 downto 12);
             
             -- Define se a instrução escreve no RegFile (Sinal de Controle Simples)
-            if v_opcode = "0111" or v_opcode = "0100" or v_opcode = "0101" or v_opcode = "0110" or v_opcode = "1111" then 
-                v_reg_write_id := '0'; -- SW, JMP, Branches não escrevem em Reg
+            if v_opcode = "0111" or v_opcode = "0100" or v_opcode = "0101" or 
+               v_opcode = "0110" or v_opcode = "1111" then 
+                v_reg_write_id := '0'; -- SW, JMP, Branches, NOP não escrevem em Reg
             else
                 v_reg_write_id := '1'; -- ADD, SUB, LDI, LW, etc. escrevem
             end if;
@@ -240,16 +250,13 @@ begin
                 ID_EX.opcode    <= "1111";
             end if;
 
-            -- =============================================================
+
             -- ESTÁGIO 1: IF (FETCH)
-            -- =============================================================
+
             if branch_taken_ex = '1' then
                 pc_reg <= target_pc;
                 IF_ID.instr <= (others => '0'); -- NOP/Flush
             else
-                -- Stall simples para Load-Use Hazard
-                -- Se a instrução no EX for LW e o destino for igual ao nosso RS ou RT,
-                -- deveríamos pausar o PC. Aqui, para simplificar, assumimos forwarding ALU-ALU.
                 pc_reg <= pc_reg + 1;
                 IF_ID.pc_plus_1 <= pc_reg + 1;
                 IF_ID.instr <= instr_mem(conv_integer(pc_reg));
@@ -258,4 +265,4 @@ begin
         end if;
     end process;
 
-end behavior;
+end behavior;   
