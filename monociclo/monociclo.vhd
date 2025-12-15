@@ -107,6 +107,7 @@ begin
     -- Só para visualização no testbench (não são R0/R1 fixos)
     R0_out <= rs_value;
     R1_out <= rt_value;
+    PC_out <= pc_reg;
 
    
     -- "ALU" E SINAIS AUXILIARES
